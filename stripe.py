@@ -13,16 +13,11 @@ global mode, mode_step, modes, mode_position, strip, fb
 mode=0;
 mode_step=1
 mode_position=0
-modes = { 0: mode_none,
-          1: mode_off,
-          2: mode_sunrise,
-          3: mode_sunset,
-          4: mode_mood }
-
 
 # Basic functions
 
 def initStrip():
+	global strip,fb
         strip = neopixel.Adafruit_NeoPixel(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT)    # Create strip
         fb=range(strip.numPixels())                                                                 # Create Framebuffer
         for j in range(strip.numPixels()):                                                          # Loop through FB
@@ -32,12 +27,20 @@ def initStrip():
 
 def drawFB(strip,fb):
         for j in range(strip.numPixels()):                                                          # Loop through stripe
-                strip.setPixelColor(j,Color(fb[j][0],fb[j][1],fb[j][2]))                            # Send pixel
+                strip.setPixelColor(j,neopixel.Color(fb[j][0],fb[j][1],fb[j][2]))                            # Send pixel
         strip.show()                                                                                # Activate leds
                 
 def refresh_LEDs():
-        global modes, mode, fb, strip
-        if(modes[mode]()):                                                                          # Execute mode-function
+        global mode, fb, strip
+	if(mode==1):                                                                                # Execute mode functions
+		mode_off()
+	elif(mode==2):
+		mode_sunrise()
+	elif(mode==3):
+		mode_sunset()
+	elif(mode==4):
+		mode_mood()
+        if(mode>=0):
                 drawFB(strip,fb)                                                                    # Send FB to strip
 
 # Color functions
@@ -51,7 +54,7 @@ def incCol(fb,i,c):
                 fb[i][c]=(fb[i][c]+1)
 
 def fadeFromMiddle(level,c,direction=0):                                                            # Fade color c to level
-	      global strip,fb                                                                             # Direction: 0:both, 1:up, 2:down
+	global strip,fb                                                                             # Direction: 0:both, 1:up, 2:down
         for i in reversed(range(strip.numPixels()/2)):
                  if(fb[i][c]!=level):                                                               # If not desired color
                         if(fb[i][c]<level and direction != 2):                                      # If color is < level and not dec-only
@@ -63,8 +66,8 @@ def fadeFromMiddle(level,c,direction=0):                                        
         return(True)                                                                                # Mark complete
 
 def fadeAll(level,c,direction=0):                                                                   # Fade color c to level
-	      global strip,fb                                                                             # Direction: 0:both, 1:up, 2:down
-	      complete=True
+	global strip,fb                                                                             # Direction: 0:both, 1:up, 2:down
+	complete=True
         for i in range(strip.numPixels()/2):
                  if(fb[i][c]!=level):                                                               # If not desired color
                         if(fb[i][c]<level and direction != 2):                                      # If color is < level and not dec-only
@@ -87,10 +90,10 @@ def mode_sunrise():
                         mode_position=0                                                             # Reset position for next step
         elif(mode_step == 2):
                 fadeFromMiddle(20,0,1)                                                              # Turn to red
-                if(mode_position > ((strip.numPixels()/12)*20)                                      # When at 1/6 of the half stripe
+                if(mode_position > ((strip.numPixels()/12)*20)):                                    # When at 1/6 of the half stripe
                        fadeFromMiddle(40,0,1)                                                       # Start second wave to red
                        fadeFromMiddle(50,1,1)                                                       # Start fading to yellow
-                       if(mode_position > ((strip.numPixels()/12)*40)                               # When at 1/3 of the half stripe
+                       if(mode_position > ((strip.numPixels()/12)*40)):                             # When at 1/3 of the half stripe
                               if(fadeFromMiddle(60,0,1) and                                         # Start third wave to red
                                  fadeFromMiddle(60,1,1) ):                                          # Start second wave to yellow
                                      mode_step=(mode_step+1)                                        # Go to next step
@@ -125,3 +128,28 @@ def mode_mood():
 
 def mode_none():
         return(False)                                                                               # No need to update stripe
+
+def reset_mode():
+	global mode_step,mode_position
+	mode_step=1
+	mode_position=0
+
+def start_sunrise():
+	global mode
+	reset_mode()
+	mode=2
+
+def start_sunset():
+	global mode
+	reset_mode()
+	mode=3
+
+def start_mood():
+	global mode
+	reset_mode()
+	mode=4
+
+def stop_all():
+	global mode
+	reset_mode()
+	mode=1
