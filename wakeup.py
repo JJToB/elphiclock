@@ -1,27 +1,15 @@
 #!/usr/bin/python
 
-import oled
-from threading import *
-import time
-import sqlite3
-import sys
-import stripe
-import RPi.GPIO as GPIO                                                         # GPIO for buttons
+import oled										# for OLED display
+import time										# for delay function
+import sqlite3										# for database
+import stripe										# for wS2812b Stripe functions
+import RPi.GPIO as GPIO									# GPIO for buttons
 
 global config,speeds,btncnt
 btncnt=0
 
-speeds = { 0: 2,
-   1: 1,
-   2: 0.5,
-   3: 0.2,
-   4: 0.1,
-   5: 0.05,
-   6: 0.02,
-   7: 0.01 }
-
-config = { 'start_before': 8,                                                   # Minutes to stard before Time
-   'speed': 6 }                                                         # Speed for Animations
+config = { 'start_before': 8 }								# Minutes to stard before Time
 
 
 def getNextTimer(db):
@@ -46,8 +34,7 @@ def getNextTimer(db):
 			) \
 		) \
 		ORDER BY w,h,m;')
-	print ('SELECT h,m,active FROM times WHERE (w='+w+'     AND (h>'+h+' OR (h='+h+' AND m>'+m+' )) AND last!='+d+') OR (w='+str(int(w)+1)+' AND (h<'+h+' OR (h='+h+' AND m<'+m+'))) ORDER BY w,h,m;')
-	data=c.fetchall()
+	data=c.fetchall()								# Get timers for next 24 hours
 	return data
 
 
@@ -55,60 +42,52 @@ def timerHit(db):
 	global config,speeds
 	db.commit()
 	c=db.cursor()
-	t=time.localtime(time.mktime(time.localtime())+(config['start_before']*60))
+	t=time.localtime(time.mktime(time.localtime())+(config['start_before']*60))	# Consider prestart time
 	h=time.strftime("%H",t)
 	m=time.strftime("%M",t)
 	d=time.strftime("%e",t)
 	w=time.strftime("%w",t)
 	c.execute('SELECT * FROM times WHERE h='+h+' AND m='+m+' AND w='+w+' AND active=1 AND last!='+d+';')
-	data=c.fetchone()
+	data=c.fetchone()								# Select timer for now from DB
 	if(data):
 		c.execute('UPDATE times SET last='+d+' WHERE h='+h+' AND m='+m+' AND w='+w+' AND active=1;')
-		db.commit()
-		print('UPDATE times SET last='+d+' WHERE h='+h+' AND m='+m+' AND w='+w+' AND active=1;')
-		print "Executing"
+		db.commit()								# Update current timer
+		print "Executing"							# ToDo: Remove debug
 		return True
 	return False
 
-def updateScreen(db,bus):
-	next=getNextTimer(db)
-	oled.screenTimes(bus,next)
-
-def main():
+def main():										# Main function
 	global config,speeds,btncnt
-	bus=oled.init()
-	stripe.initStrip()
-	GPIO.setmode(GPIO.BCM)                                                          # Setup GPIO
-	GPIO.setup(27,GPIO.IN, pull_up_down=GPIO.PUD_UP)                                # Initialize GPIO27
+	bus=oled.init()									# Initialize Display
+	stripe.initStrip()								# Initialize LED Stripe
+	GPIO.setmode(GPIO.BCM)								# Setup GPIO
+	GPIO.setup(27,GPIO.IN, pull_up_down=GPIO.PUD_UP)				# Initialize GPIO27
 
 
 	db = sqlite3.connect('wakeup.db')
-	m = 60											# Setup out of range to force refresh on startup
+	m = 60										# Setup out of range to force refresh on startup
 	while True:
-		if(m!=time.strftime("%M",time.localtime())):
-			print(str(time.strftime("%M",time.localtime())))
-			if(stripe.running()):
-				oled.screenRunning(bus)
+		if(m!=time.strftime("%M",time.localtime())):				# when minute changed
+			print(str(time.strftime("%H:%M",time.localtime())))		# ToDo: Remove debug
+			if(stripe.running()):						# If light is on
+				oled.screenRunning(bus)					# Show running screen
 			else:
-				updateScreen(db,bus)
-			m=time.strftime("%M",time.localtime())
-			if(timerHit(db)):
-				stripe.start_sunrise()
-               	time.sleep(speeds[config['speed']])
-		stripe.refresh_LEDs()
-		if GPIO.input(27):                                                      # Check if button released
-			if btncnt > 2:                                                  # and was pressed before
+				oled.screenTimes(bus,getNextTimer(db))			# Show Timeing screen
+			m=time.strftime("%M",time.localtime())				# store actual minute
+			if(timerHit(db)):						# If need to start wakeup
+				stripe.start_sunrise()					# Start sunrise-mode
+               	time.sleep(0.02)							# Small delay
+		stripe.refresh_LEDs()							# continue LED animation and efresh stripes
+		if GPIO.input(27):							# Check if button released...
+			if btncnt > 2:							# ...and was pressed before ToDo: Long press action
 				if(stripe.running()):
-					print("Stopping")
-                               		stripe.stop_all()                               # TurnOff
+                               		stripe.stop_all()				# TurnOff
 				else:
-					print("Mood")
-					stripe.start_mood()
-               		btncnt = 0                                                      # Reset counter
-		else:                                                                   # if pressed
-			print("PRESSED")
-			btncnt += 1                                                     # Increment counter
-			if btncnt > 1000:                                               # Prevent overrun
+					stripe.start_mood()				# Start mood
+               		btncnt = 0							# Reset counter
+		else:									# if pressed
+			btncnt += 1							# Increment counter
+			if btncnt > 1000:						# Prevent overrun
 				btncnt=500
 
 
